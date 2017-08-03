@@ -38,15 +38,15 @@ import org.slf4j.LoggerFactory;
 public class ProxyCoapClientResource extends ForwardingResource {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(ProxyCoapClientResource.class);
+	private long timeout;
 
 	public ProxyCoapClientResource() {
-		this("coapClient");
+		this(100000); // 100 s
 	} 
 	
-	public ProxyCoapClientResource(String name) {
-		// set the resource hidden
-		super(name, true);
-		getAttributes().setTitle("Forward the requests to a CoAP server.");
+	public ProxyCoapClientResource(long timeout) {
+		super("coap2coap");
+		this.timeout = timeout;
 	}
 
 	@Override
@@ -61,10 +61,6 @@ public class ProxyCoapClientResource extends ForwardingResource {
 			future.complete(new Response(ResponseCode.BAD_OPTION));
 			return future;
 		}
-
-		// remove the fake uri-path
-		// FIXME: HACK // TODO: why? still necessary in new Cf?
-		incomingRequest.getOptions().clearUriPath();
 
 		final EndpointManager endpointManager = EndPointManagerPool.getManager();
 

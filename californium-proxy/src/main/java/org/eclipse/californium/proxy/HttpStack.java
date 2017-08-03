@@ -34,6 +34,7 @@ import org.apache.http.HttpResponseInterceptor;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.protocol.RequestAcceptEncoding;
 import org.apache.http.client.protocol.ResponseContentEncoding;
+import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.http.impl.nio.DefaultHttpServerIODispatch;
@@ -92,7 +93,7 @@ public class HttpStack {
 	 * http://proxy-address/PROXY_RESOURCE_NAME/coap-server, the proxying
 	 * handler will forward the request desired coap server.
 	 */
-	private static final String PROXY_RESOURCE_NAME = "proxy";
+	private static final String PROXY_RESOURCE_NAME = "/proxy/";
 
 	/**
 	 * The resource associated with the local resources behavior. If a client
@@ -100,7 +101,7 @@ public class HttpStack {
 	 * http://proxy-address/LOCAL_RESOURCE_NAME/coap-resource, the proxying
 	 * handler will forward the request to the local resource requested.
 	 */
-	public static final String LOCAL_RESOURCE_NAME = "local";
+	public static final String LOCAL_RESOURCE_NAME = "/local/";
 
 	private final ConcurrentHashMap<Request, Exchanger<Response>> exchangeMap = new ConcurrentHashMap<Request, Exchanger<Response>>();
 
@@ -170,11 +171,8 @@ public class HttpStack {
 			HttpAsyncRequestHandlerRegistry registry = new HttpAsyncRequestHandlerRegistry();
 
 			// register the handler that will reply to the proxy requests
-			registry.register("/" + PROXY_RESOURCE_NAME + "/*", new ProxyAsyncRequestHandler(PROXY_RESOURCE_NAME, true));
-			// register the handler for the frontend
-			registry.register("/" + LOCAL_RESOURCE_NAME + "/*", new ProxyAsyncRequestHandler(LOCAL_RESOURCE_NAME, false));
-			// register the default handler for root URIs
-			// wrapping a common request handler with an async request handler
+			registry.register(PROXY_RESOURCE_NAME + "*", new ProxyAsyncRequestHandler(PROXY_RESOURCE_NAME));
+			// register the default handler for root URIs wrapped in an async request handler
 			registry.register("*", new BasicAsyncRequestHandler(new BaseRequestHandler()));
 
 			// Create server-side HTTP protocol handler
@@ -237,7 +235,9 @@ public class HttpStack {
 			@Override
 			public void handle(HttpRequest httpRequest, HttpResponse httpResponse, HttpContext httpContext) throws HttpException, IOException {
 				httpResponse.setStatusCode(HttpStatus.SC_OK);
-				httpResponse.setEntity(new StringEntity("Californium Proxy server"));
+				httpResponse.setEntity(new StringEntity(
+						"<html><body><h1>Californium (Cf) Proxy</h1><form method=\"get\" onsubmit=\"this.action='/proxy/'+this.uri.value;\"><input type=\"text\" size=\"50\" id=\"uri\"/><input type=\"submit\" value=\"GET\"/></form></body></html>",
+						ContentType.TEXT_HTML));
 
 //				if (Bench_Help.DO_LOG) 
 					LOGGER.debug("Root request handled");
@@ -255,20 +255,17 @@ public class HttpStack {
 				HttpAsyncRequestHandler<HttpRequest> {
 
 			private final String localResource;
-			private final boolean proxyingEnabled;
 
 			/**
 			 * Instantiates a new proxy request handler.
 			 * 
 			 * @param localResource
 			 *            the local resource
-			 * @param proxyingEnabled
 			 */
-			public ProxyAsyncRequestHandler(String localResource, boolean proxyingEnabled) {
+			public ProxyAsyncRequestHandler(String localResource) {
 				super();
 
 				this.localResource = localResource;
-				this.proxyingEnabled = proxyingEnabled;
 			}
 
 			/*
@@ -286,7 +283,7 @@ public class HttpStack {
 				final HttpRequestContext httpRequestContext = new HttpRequestContext(httpExchange, httpRequest);
 				try {
 					// translate the request in a valid coap request
-					Request coapRequest = new HttpTranslator().getCoapRequest(httpRequest, localResource, proxyingEnabled);
+					Request coapRequest = new HttpTranslator().getCoapRequest(httpRequest, localResource);
 //					if (Bench_Help.DO_LOG) 
 						LOGGER.info("Received HTTP request and translate to {}", coapRequest);
 

@@ -117,16 +117,17 @@ public final class CoapTranslator {
 		// the new message
 		OptionSet options = new OptionSet(incomingRequest.getOptions());
 		options.removeProxyUri();
+		options.removeProxyScheme();
 		options.removeBlock1();
 		options.removeBlock2();
+		options.removeUriHost();
+		options.removeUriPort();
 		options.clearUriPath();
 		options.clearUriQuery();
 		outgoingRequest.setOptions(options);
 		
 		// set the proxy-uri as the outgoing uri
-		if (serverUri != null) {
-			outgoingRequest.setURI(serverUri);
-		}
+		outgoingRequest.setURI(serverUri);
 
 		LOGGER.debug("Incoming request translated correctly");
 		return outgoingRequest;
