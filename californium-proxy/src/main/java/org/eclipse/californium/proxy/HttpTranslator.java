@@ -20,19 +20,12 @@
 package org.eclipse.californium.proxy;
 
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CharsetEncoder;
-import java.nio.charset.UnmappableCharacterException;
 import java.nio.charset.UnsupportedCharsetException;
 import java.util.LinkedList;
 import java.util.List;
@@ -62,6 +55,7 @@ import org.apache.http.message.BasicHttpRequest;
 import org.apache.http.message.BasicRequestLine;
 import org.apache.http.message.BasicStatusLine;
 import org.apache.http.util.EntityUtils;
+import org.eclipse.californium.core.coap.CoAP;
 import org.eclipse.californium.core.coap.CoAP.Code;
 import org.eclipse.californium.core.coap.CoAP.ResponseCode;
 import org.eclipse.californium.core.coap.CoAP.Type;
@@ -348,17 +342,14 @@ public final class HttpTranslator {
 			payload = EntityUtils.toByteArray(httpEntity);
 			if (payload != null && payload.length > 0) {
 
-				// the only supported charset in CoAP is UTF-8
-				Charset coapCharset = UTF_8;
-
 				// get the charset for the http entity
 				ContentType httpContentType = ContentType.getOrDefault(httpEntity);
 				Charset httpCharset = httpContentType.getCharset();
 
 				// check if the charset is the one allowed by coap
-				if (httpCharset != null && !httpCharset.equals(coapCharset)) {
+				if (httpCharset != null && !httpCharset.equals(CoAP.UTF8_CHARSET)) {
 					// translate the payload to the utf-8 charset
-					payload = changeCharset(payload, httpCharset, coapCharset);
+					payload = changeCharset(payload, httpCharset, CoAP.UTF8_CHARSET);
 				}
 			}
 		} catch (IOException e) {
@@ -708,11 +699,10 @@ public final class HttpTranslator {
 
 		// iterate over each option
 		for (Option option : optionList) {
-			// skip content-type because it should be translated while handling
-			// the payload; skip proxy-uri because it has to be translated in a
-			// different way
+			// skip content-type because it should be translated while handling the payload
+			// skip ETag for correct formatting
 			int optionNumber = option.getNumber();
-			if (optionNumber != OptionNumberRegistry.CONTENT_FORMAT && optionNumber != OptionNumberRegistry.PROXY_URI) {
+			if (optionNumber != OptionNumberRegistry.CONTENT_FORMAT && optionNumber != OptionNumberRegistry.ETAG) {
 				// get the mapping from the property file
 				String headerName = httpTranslationProperties.getProperty(KEY_COAP_OPTION + optionNumber);
 
@@ -725,7 +715,7 @@ public final class HttpTranslator {
 					} else if (OptionNumberRegistry.getFormatByNr(optionNumber) == optionFormats.INTEGER) {
 						stringOptionValue = Integer.toString(option.getIntegerValue());
 					} else if (OptionNumberRegistry.getFormatByNr(optionNumber) == optionFormats.OPAQUE) {
-						stringOptionValue = new String(option.getValue());
+						stringOptionValue = option.toValueString();
 					} else {
 						// if the option is not formattable, skip it
 						continue;
@@ -740,6 +730,9 @@ public final class HttpTranslator {
 					Header header = new BasicHeader(headerName, stringOptionValue);
 					headers.add(header);
 				}
+			} else if (optionNumber == OptionNumberRegistry.ETAG) {
+				Header header = new BasicHeader("etag", "\"" + option.toValueString().substring(2) + "\"");
+				headers.add(header);
 			}
 		}
 
@@ -907,6 +900,8 @@ public final class HttpTranslator {
 				httpResponse.setHeader("content-type", contentType.toString());
 			}
 		}
+		LOGGER.info("Translated " + coapResponse);
+		LOGGER.info("To " + httpResponse);
 	}
 	
 	public Properties getHttpTranslationProperties() {
@@ -923,35 +918,9 @@ public final class HttpTranslator {
 	 * @param toCharset
 	 *            the to charset
 	 * 
-	 * 
-	 * @return the byte[] * @throws TranslationException the translation
-	 *         exception
+	 * @return the byte[] the translation
 	 */
-	private byte[] changeCharset(byte[] payload, Charset fromCharset, Charset toCharset) throws TranslationException {
-		try {
-			// decode with the source charset
-			CharsetDecoder decoder = fromCharset.newDecoder();
-			CharBuffer charBuffer = decoder.decode(ByteBuffer.wrap(payload));
-			decoder.flush(charBuffer);
-
-			// encode to the destination charset
-			CharsetEncoder encoder = toCharset.newEncoder();
-			ByteBuffer byteBuffer = encoder.encode(charBuffer);
-			encoder.flush(byteBuffer);
-			payload = byteBuffer.array();
-		} catch (UnmappableCharacterException e) {
-			// thrown when an input character (or byte) sequence is valid but
-			// cannot be mapped to an output byte (or character) sequence.
-			// If the character sequence starting at the input buffer's current
-			// position cannot be mapped to an equivalent byte sequence and the
-			// current unmappable-character
-			LOGGER.debug("Charset translation: cannot mapped to an output char byte", e);
-			return null;
-		} catch (CharacterCodingException e) {
-			LOGGER.warn("Problem in the decoding/encoding charset", e);
-			throw new TranslationException("Problem in the decoding/encoding charset", e);
-		}
-
-		return payload;
+	private static byte[] changeCharset(byte[] payload, Charset fromCharset, Charset toCharset) {
+		return new String(payload, fromCharset).getBytes(toCharset);
 	}
 }
