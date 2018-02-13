@@ -52,15 +52,11 @@ public class ProxyHttpClientResource extends ForwardingResource {
 	private static final CloseableHttpAsyncClient asyncClient = HttpClientFactory.createClient();
 
 	public ProxyHttpClientResource() {
-		// set the resource hidden
-//		this("proxy/httpClient");
-		this("httpClient");
+		this(100000);
 	}
 
-	public ProxyHttpClientResource(String name) {
-		// set the resource hidden
-		super(name, true);
-		getAttributes().setTitle("Forward the requests to a HTTP client.");
+	public ProxyHttpClientResource(long timeout) {
+		super("httpClient");
 	}
 
 	@Override
@@ -74,9 +70,6 @@ public class ProxyHttpClientResource extends ForwardingResource {
 			future.complete(new Response(ResponseCode.BAD_OPTION));
 			return future;
 		}
-
-		// remove the fake uri-path // TODO: why? still necessary in new Cf?
-		incomingCoapRequest.getOptions().clearUriPath();; // HACK
 
 		// get the proxy-uri set in the incoming coap request
 		URI proxyUri;
